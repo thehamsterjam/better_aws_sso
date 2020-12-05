@@ -1,0 +1,15 @@
+[package]
+name = "ssologin"
+version = "0.1.0"
+authors = ["Damien Maier <ddr.maier@gmail.com>"]
+edition = "2018"
+
+
+[dependencies]
+ureq = {version =  "1.5.2", features = ["json", "tls"]}
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0.60"
+webbrowser = "0.5.5"
+rust-ini = "0.16.0"
+clap = "2.33.3"
+dirs = "3.0"
