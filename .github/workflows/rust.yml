@@ -20,7 +20,7 @@ jobs:
       run: cargo build --verbose --release
     - uses: actions/upload-artifact@v2
       with:
-        name: ssologin
+        name: ssologin_ubuntu
         path: target/release/ssologin
 
   build_win:
@@ -31,7 +31,7 @@ jobs:
       run: cargo build --verbose --release
     - uses: actions/upload-artifact@v2
       with:
-        name: ssologin
+        name: ssologin.exe
         path: target/release/ssologin.exe
         
   
@@ -43,5 +43,5 @@ jobs:
       run: cargo build --verbose --release
     - uses: actions/upload-artifact@v2
       with:
-        name: ssologin
+        name: ssologin_mac
         path: target/release/ssologin
