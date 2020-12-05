@@ -18,13 +18,30 @@ jobs:
     - uses: actions/checkout@v2
     - name: Build
       run: cargo build --verbose --release
-  
-  build_rest:
-    strategy:
-      matrix:
-        os: [windows-latest, macos-latest]
-    runs-on: ${{ matrix.os }}
+    - uses: actions/upload-artifact@v2
+      with:
+        name: ssologin
+        path: target/release/ssologin
+
+  build_win:
+    runs-on: windows-latest
     steps:
     - uses: actions/checkout@v2
     - name: Build
       run: cargo build --verbose --release
+    - uses: actions/upload-artifact@v2
+      with:
+        name: ssologin
+        path: target/release/ssologin.exe
+        
+  
+  build_mac:
+    runs-on: macos-latest
+    steps:
+    - uses: actions/checkout@v2
+    - name: Build
+      run: cargo build --verbose --release
+    - uses: actions/upload-artifact@v2
+      with:
+        name: ssologin
+        path: target/release/ssologin
