@@ -58,7 +58,7 @@ struct GetRoleCredsResponse {
 
 fn main() {
     let matches = App::new("AWS SSO, but better")
-                    .version("0.0.1")
+                    .version("0.0.2")
                     .author("Damien Maier")
                     .author("Saves your SSO login credentials into the credentials file, so it can be used with things like terraform")
                     .arg(Arg::with_name("profile")
