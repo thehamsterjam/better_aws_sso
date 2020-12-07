@@ -272,9 +272,9 @@ fn save_sso(
     verbose: bool,
 ) {
     let section_name = if save_as_profile_name {
-        format!("{}_{}", sso_account_id, sso_role_name)
-    } else {
         format!("{}_", profile)
+    } else {
+        format!("{}_{}", sso_account_id, sso_role_name)
     };
 
     let mut aws_creds =
