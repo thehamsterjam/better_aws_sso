@@ -1,6 +1,21 @@
 #!/bin/bash
 set -e 
 
+## VARIABLES
+INSTALL_DIR="/usr/local/bin"
+
+
+## CHECK OPTIONS
+while getopts ":p:" opt; do
+  case $opt in
+    p) INSTALL_DIR="$OPTARG"
+    ;;
+    \?) echo "Invalid option -$OPTARG" >&2
+    ;;
+  esac
+done
+INSTALL_DIR="$INSTALL_DIR/ssologin" ## Append ssologin to the end of path. 
+
 main(){
 	echo ":::"
 
@@ -23,9 +38,9 @@ main(){
 	LATEST_RELEASE=$(curl --silent "https://api.github.com/repos/thehamsterjam/better_aws_sso/releases/latest" | grep -Po '"tag_name": "\K.*?(?=")')
 	# echo "::: Will install version $LATEST_RELEASE"
 
-	if [[ -f /usr/local/bin/ssologin ]]; then
+	if command -v ssologin &> /dev/null; then
 		echo "::: ssologin exists on your filesystem, considering upgrading..."
-
+		INSTALLED_DIR=$(command -v ssologin)
 		INSTALLED_VERSION=$(ssologin -V)
 		temp=$(echo $INSTALLED_VERSION)
 		INSTALLED_VERSION=(${temp//[\(\),]/})
@@ -44,7 +59,8 @@ main(){
 	
 	echo "::: I require your password for chmod and install"
 	$SUDO chmod +x ssologin_ubuntu
-	$SUDO mv ssologin_ubuntu /usr/local/bin/ssologin
+	echo "::: Installation directory is $INSTALL_DIR"
+	$SUDO mv ssologin_ubuntu $INSTALL_DIR
 	ssologin --help
 	echo "::: Done"
 }
