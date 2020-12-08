@@ -13,3 +13,6 @@ webbrowser = "0.5.5"
 rust-ini = "0.16.0"
 clap = "2.33.3"
 dirs = "3.0"
+
+[build-dependencies]
+ureq = {version =  "1.5.2", features = ["json", "tls"]}
