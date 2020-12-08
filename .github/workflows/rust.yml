@@ -23,7 +23,7 @@ jobs:
     - uses: actions/upload-artifact@v2
       with:
         name: ssologin_ubuntu
-        path: target/release/ssologin
+        path: target/x86_64-unknown-linux-musl/release/ssologin
 
   build_win:
     runs-on: windows-latest
