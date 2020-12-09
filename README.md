@@ -1,5 +1,5 @@
-![Create Release](https://github.com/thehamsterjam/better_aws_sso/workflows/Create%20Release/badge.svg) 
-![Rust](https://github.com/thehamsterjam/better_aws_sso/workflows/Rust/badge.svg)
+[![Create Release](https://github.com/thehamsterjam/better_aws_sso/workflows/Create%20Release/badge.svg)](https://github.com/thehamsterjam/better_aws_sso/actions?query=workflow%3A%22Create+Release%22) 
+[![Rust](https://github.com/thehamsterjam/better_aws_sso/workflows/Rust/badge.svg)](https://github.com/thehamsterjam/better_aws_sso/actions?query=workflow%3ARust)
 # (Slightly) better AWS sso login
 
 Using AWS SSO with tools like terraform require you to go to the AWS SSO start url, click the account you want, click command line access, copy the text there and then save it to your AWS credentials file. 
