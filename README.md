@@ -18,7 +18,7 @@ and it will save the credentials to your AWS credentials file directly.
 Run the below command to download and run the installer: 
 
 ```shell
-$ wget https://raw.githubusercontent.com/thehamsterjam/better_aws_sso/master/install/linux_install.sh | bash
+$ curl -LJ https://raw.githubusercontent.com/thehamsterjam/better_aws_sso/master/install/linux_install.sh | bash
 ```
 
 #### Manual Installation
