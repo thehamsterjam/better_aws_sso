@@ -55,12 +55,12 @@ main(){
 	fi
 
 	echo "::: Will install version $LATEST_RELEASE"
-	wget -q --show-progress https://github.com/thehamsterjam/better_aws_sso/releases/download/$LATEST_RELEASE/ssologin_ubuntu
+	wget -q --show-progress https://github.com/thehamsterjam/better_aws_sso/releases/download/$LATEST_RELEASE/ssologin_linux
 	
 	echo "::: I require your password for chmod and install"
-	$SUDO chmod +x ssologin_ubuntu
+	$SUDO chmod +x ssologin_linux
 	echo "::: Installation directory is $INSTALL_DIR"
-	$SUDO mv ssologin_ubuntu $INSTALL_DIR
+	$SUDO mv ssologin_linux $INSTALL_DIR
 	ssologin --help
 	echo "::: Done"
 }
