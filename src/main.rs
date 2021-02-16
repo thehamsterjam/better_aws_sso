@@ -87,16 +87,16 @@ fn main() {
     let aws_conf = Ini::load_from_file(format!("{}{}", home, "/.aws/config")).unwrap();
 
     let sso_start_url = aws_conf
-        .get_from(Some(format!("profile {}", profile)), "sso_start_url")
+        .get_from(Some(format!("{}", profile)), "sso_start_url")
         .unwrap();
     let sso_region = aws_conf
-        .get_from(Some(format!("profile {}", profile)), "sso_region")
+        .get_from(Some(format!("{}", profile)), "sso_region")
         .unwrap();
     let sso_account_id = aws_conf
-        .get_from(Some(format!("profile {}", profile)), "sso_account_id")
+        .get_from(Some(format!("{}", profile)), "sso_account_id")
         .unwrap();
     let sso_role_name = aws_conf
-        .get_from(Some(format!("profile {}", profile)), "sso_role_name")
+        .get_from(Some(format!("{}", profile)), "sso_role_name")
         .unwrap();
 
     let oidc_url = format!("https://oidc.{}.amazonaws.com", sso_region);

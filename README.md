@@ -40,7 +40,7 @@ $ ./linux_install.sh -p <desired_path>
 Configure your [AWS CLI config file](https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-sso.html), which is usually located at `~/.aws/config`, with the below snippet, filling in the fields with your specific information: 
 
 ```
-[profile my-dev-profile]
+[my-dev-profile]
 sso_start_url  = https://my-sso-portal.awsapps.com/start
 sso_region     = us-east-1
 sso_account_id = 123456789011
