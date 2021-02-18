@@ -110,7 +110,7 @@ fn main() {
                         .help("Print verbose logging"))
                     .get_matches();
 
-    let profile = matches.value_of("profile").unwrap();
+    let profile = matches.value_of("profile").unwrap().to_owned();
     let verbose = matches.is_present("verbose");
     let save_as_profile_name = matches.is_present("save_as_profile_name");
     let all = matches.is_present("all");
@@ -151,7 +151,7 @@ fn main() {
     }
 }
 
-fn get_sso_profiles(profile_name : &str, home : &String, all : bool) -> Vec<SsoProfile> {
+fn get_sso_profiles(profile_name : String, home : &String, all : bool) -> Vec<SsoProfile> {
 
     let aws_conf = Ini::load_from_file(format!("{}{}", home, "/.aws/config")).unwrap();
 
