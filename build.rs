@@ -1,7 +1,7 @@
 // CARGO BUILD SCRIPT
 
 use std::{
-    error::Error, fs::File, io::{BufWriter, Write}, path::Path, io::Read
+    error::Error, fs::File, io::{BufWriter, Write}, path::Path
 };
 use ureq;
 

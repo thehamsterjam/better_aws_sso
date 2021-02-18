@@ -9,6 +9,33 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 const GRANT_TYPE: &str = "urn:ietf:params:oauth:grant-type:device_code";
 
+#[derive(Debug)]
+#[allow(non_snake_case)]
+struct SsoProfile {
+    sso_profile_name : String,
+    sso_start_url: String,
+    sso_region : String,
+    sso_account_id : String,
+    sso_role_name : String
+}
+
+impl SsoProfile {
+    fn new(
+        sso_profile_name : String,
+        sso_start_url: String,
+        sso_region : String,
+        sso_account_id : String,
+        sso_role_name : String) -> SsoProfile {
+            SsoProfile{
+                sso_profile_name,
+                sso_start_url,
+                sso_region,
+                sso_account_id,
+                sso_role_name
+            }
+        }
+}
+
 #[derive(Debug, Deserialize)]
 #[allow(non_snake_case)]
 struct RegisterClientResponse {
@@ -56,6 +83,7 @@ struct GetRoleCredsResponse {
     roleCredentials: RoleCreds,
 }
 
+
 fn main() {
     static VERSION: &'static str = include_str!(concat!("", "version"));
     let matches = App::new("AWS SSO, but better")
@@ -72,6 +100,10 @@ fn main() {
                         .short("s")
                         .long("save_as_profile_name")
                         .help("Whether to save the credentials under the profile name with an _ at the end or under <account_id>_<role_name>"))
+                    .arg(Arg::with_name("all")
+                        .short("a")
+                        .long("all")
+                        .help("Get credentials for all profiles with the same start url as the specified profile"))
                     .arg(Arg::with_name("verbose")
                         .short("v")
                         .long("verbose")
@@ -81,51 +113,84 @@ fn main() {
     let profile = matches.value_of("profile").unwrap();
     let verbose = matches.is_present("verbose");
     let save_as_profile_name = matches.is_present("save_as_profile_name");
+    let all = matches.is_present("all");
 
     let home = dirs::home_dir().unwrap().to_str().unwrap().to_owned();
+        
+    let sso_profiles = get_sso_profiles(profile, &home,  all);
 
-    let aws_conf = Ini::load_from_file(format!("{}{}", home, "/.aws/config")).unwrap();
-
-    let sso_start_url = aws_conf
-        .get_from(Some(format!("{}", profile)), "sso_start_url")
-        .unwrap();
-    let sso_region = aws_conf
-        .get_from(Some(format!("{}", profile)), "sso_region")
-        .unwrap();
-    let sso_account_id = aws_conf
-        .get_from(Some(format!("{}", profile)), "sso_account_id")
-        .unwrap();
-    let sso_role_name = aws_conf
-        .get_from(Some(format!("{}", profile)), "sso_role_name")
-        .unwrap();
-
-    let oidc_url = format!("https://oidc.{}.amazonaws.com", sso_region);
-    let sso_url = format!("https://portal.sso.{}.amazonaws.com", sso_region);
+    let oidc_url = format!("https://oidc.{}.amazonaws.com", sso_profiles[0].sso_region);
+    let sso_url = format!("https://portal.sso.{}.amazonaws.com", sso_profiles[0].sso_region);
 
     let register_client_resp = register_client(&oidc_url, verbose);
 
-    let device_auth_resp = device_auth(&oidc_url, sso_start_url, &register_client_resp, verbose);
+    let device_auth_resp = device_auth(&oidc_url, &sso_profiles[0].sso_start_url, &register_client_resp, verbose);
 
     let create_token_resp =
         create_token(&oidc_url, &register_client_resp, &device_auth_resp, verbose);
 
-    let get_role_creds_resp = get_role_credentials(
-        &sso_url,
-        sso_account_id,
-        sso_role_name,
-        &create_token_resp,
-        verbose,
-    );
+    for sso_profile in sso_profiles {
 
-    save_sso(
-        profile,
-        sso_account_id,
-        sso_role_name,
-        &get_role_creds_resp,
-        home,
-        save_as_profile_name,
-        verbose,
-    );
+        let get_role_creds_resp = get_role_credentials(
+            &sso_url,
+            &sso_profile.sso_account_id,
+            &sso_profile.sso_role_name,
+            &create_token_resp,
+            verbose,
+        );
+    
+        save_sso(
+            &sso_profile.sso_profile_name,
+            &sso_profile.sso_account_id,
+            &sso_profile.sso_role_name,
+            &get_role_creds_resp,
+            &home,
+            save_as_profile_name,
+            verbose,
+        );
+    }
+}
+
+fn get_sso_profiles(profile_name : &str, home : &String, all : bool) -> Vec<SsoProfile> {
+
+    let aws_conf = Ini::load_from_file(format!("{}{}", home, "/.aws/config")).unwrap();
+
+    let sso_start_url = aws_conf
+        .get_from(Some(format!("{}", profile_name)), "sso_start_url")
+        .unwrap().to_owned();
+    let sso_region = aws_conf
+        .get_from(Some(format!("{}", profile_name)), "sso_region")
+        .unwrap().to_owned();
+    let sso_account_id = aws_conf
+        .get_from(Some(format!("{}", profile_name)), "sso_account_id")
+        .unwrap().to_owned();
+    let sso_role_name = aws_conf
+        .get_from(Some(format!("{}", profile_name)), "sso_role_name")
+        .unwrap().to_owned();
+
+    if !all {
+        return vec![SsoProfile::new(profile_name, sso_start_url, sso_region, sso_account_id, sso_role_name)]
+    }
+    else {
+        let mut profiles = Vec::new();
+
+        for (section, properties) in aws_conf.iter() {
+            if properties.contains_key("sso_start_url") {
+                if properties.get("sso_start_url").unwrap() == sso_start_url {
+                    profiles.push(SsoProfile::new(
+                        section.unwrap().to_owned(),
+                        properties.get("sso_start_url").unwrap().to_owned(),
+                        properties.get("sso_region").unwrap().to_owned(),
+                        properties.get("sso_account_id").unwrap().to_owned(),
+                        properties.get("sso_role_name").unwrap().to_owned(),
+                    ))
+                }
+            }
+        }
+
+        return profiles;
+    }
+
 }
 
 fn register_client(oidc_url: &String, verbose: bool) -> RegisterClientResponse {
@@ -160,7 +225,7 @@ fn register_client(oidc_url: &String, verbose: bool) -> RegisterClientResponse {
 
 fn device_auth(
     oidc_url: &String,
-    start_url: &str,
+    start_url: &String,
     register_resp: &RegisterClientResponse,
     verbose: bool,
 ) -> StartDeviceAuthorizationResponse {
@@ -235,8 +300,8 @@ fn create_token(
 
 fn get_role_credentials(
     sso_url: &String,
-    sso_account_id: &str,
-    sso_role_name: &str,
+    sso_account_id: &String,
+    sso_role_name: &String,
     create_token_resp: &CreateTokenResponse,
     verbose: bool,
 ) -> GetRoleCredsResponse {
@@ -265,10 +330,10 @@ fn get_role_credentials(
 
 fn save_sso(
     profile: &str,
-    sso_account_id: &str,
-    sso_role_name: &str,
+    sso_account_id: &String,
+    sso_role_name: &String,
     get_role_creds: &GetRoleCredsResponse,
-    home_dir: String,
+    home_dir: &String,
     save_as_profile_name: bool,
     verbose: bool,
 ) {
@@ -305,12 +370,12 @@ fn save_sso(
         .unwrap();
 }
 
-fn list_accounts(sso_url: String, accessToken: String) -> Response {
+fn _list_accounts(sso_url: String, access_token: String) -> Response {
     ureq::get(format!("{}{}", sso_url, "/assignment/accounts").as_str())
         .query("max_result", "100")
         .set(
             "x-amz-sso_bearer_token",
-            format!("{}", accessToken).as_str(),
+            format!("{}", access_token).as_str(),
         )
         .call()
 }
