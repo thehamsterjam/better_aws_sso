@@ -12,6 +12,12 @@ $ ssologin -p <aws_profile>
 
 and it will save the credentials to your AWS credentials file directly.
 
+There is an extended mode, which will collect all your credentials from a single start URL (meaning that you run `ssologin` once, and authenticate once in your browser). Use the `-a` flag. 
+
+```shell
+$ ssologin -p <aws_profile> -a
+```
+
 ## Installation
 
 ### Linux machines
