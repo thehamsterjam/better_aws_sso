@@ -41,6 +41,12 @@ $ chmod +x ./linux_install.sh
 $ ./linux_install.sh -p <desired_path>
 ```
 
+### Windows and Mac Users
+
+Please download the [latest release](https://github.com/thehamsterjam/better_aws_sso/releases/latest) for your OS.
+
+* Help wanted creating install scripts for Windows/Mac users
+
 ## Configuring AWS SSO for AWS CLI
 
 Configure your [AWS CLI config file](https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-sso.html), which is usually located at `~/.aws/config`, with the below snippet, filling in the fields with your specific information: 
