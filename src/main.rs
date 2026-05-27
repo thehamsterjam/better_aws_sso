@@ -1,7 +1,8 @@
 use clap::{App, Arg};
 use ini::Ini;
 use serde::Deserialize;
-use std::{thread, time};
+use std::process::Command;
+use std::{fs, thread, time};
 use ureq::Response;
 use webbrowser;
 extern crate dirs;
@@ -16,7 +17,7 @@ struct SsoProfile {
     sso_start_url: String,
     sso_region : String,
     sso_account_id : String,
-    sso_role_name : String
+    sso_role_name : String,
 }
 
 impl SsoProfile {
@@ -31,30 +32,30 @@ impl SsoProfile {
                 sso_start_url,
                 sso_region,
                 sso_account_id,
-                sso_role_name
+                sso_role_name,
             }
         }
 }
 
 #[derive(Debug, Deserialize)]
 #[allow(non_snake_case)]
+struct SsoCacheToken {
+    startUrl: Option<String>,
+    accessToken: Option<String>,
+    expiresAt: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[allow(non_snake_case)]
 struct RegisterClientResponse {
     clientId: String,
-    clientIdIssuedAt: i32,
     clientSecret: String,
-    clientSecretExpiresAt: i32,
-    authorizationEndpoint: Option<String>,
-    tokenEndpoint: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
 #[allow(non_snake_case)]
 struct StartDeviceAuthorizationResponse {
     deviceCode: String,
-    expiresIn: i32,
-    interval: i32,
-    userCode: String,
-    verificationUri: Option<String>,
     verificationUriComplete: String,
 }
 
@@ -62,17 +63,12 @@ struct StartDeviceAuthorizationResponse {
 #[allow(non_snake_case)]
 struct CreateTokenResponse {
     accessToken: String,
-    expiresIn: i32,
-    idToken: Option<String>,
-    refreshToken: Option<String>,
-    tokenType: String,
 }
 
 #[derive(Debug, Deserialize)]
 #[allow(non_snake_case)]
 struct RoleCreds {
     accessKeyId: String,
-    expiration: i64,
     secretAccessKey: String,
     sessionToken: String,
 }
@@ -94,51 +90,65 @@ fn main() {
                         .short("p")
                         .long("profile")
                         .takes_value(true)
-                        .required(true)
-                        .help("AWS profile set up for SSO"))
+                        .required_unless("sso_session")
+                        .help("AWS profile set up for SSO (old config format). With --sso-session, filters to a single profile under that session."))
+                    .arg(Arg::with_name("sso_session")
+                        .long("sso-session")
+                        .takes_value(true)
+                        .required_unless("profile")
+                        .help("AWS SSO session name (new config format with [sso-session X]). Runs `aws sso login --sso-session X` and writes creds for every [profile *] under it."))
                     .arg(Arg::with_name("save_as_profile_name")
                         .short("s")
                         .long("save_as_profile_name")
-                        .help("Whether to save the credentials under the profile name with an _ at the end or under <account_id>_<role_name>"))
+                        .help("Save credentials under <profile>_ instead of <account_id>_<role_name>"))
                     .arg(Arg::with_name("all")
                         .short("a")
                         .long("all")
-                        .help("Get credentials for all profiles with the same start url as the specified profile"))
+                        .help("With --profile (old format): collect all profiles sharing the same sso_start_url. Ignored with --sso-session."))
                     .arg(Arg::with_name("verbose")
                         .short("v")
                         .long("verbose")
                         .help("Print verbose logging"))
                     .get_matches();
 
-    let profile = matches.value_of("profile").unwrap().to_owned();
     let verbose = matches.is_present("verbose");
     let save_as_profile_name = matches.is_present("save_as_profile_name");
-    let all = matches.is_present("all");
 
     let home = dirs::home_dir().unwrap().to_str().unwrap().to_owned();
-        
-    let sso_profiles = get_sso_profiles(profile, &home,  all);
 
-    let oidc_url = format!("https://oidc.{}.amazonaws.com", sso_profiles[0].sso_region);
+    let (sso_profiles, access_token) = if let Some(session) = matches.value_of("sso_session") {
+        let filter = matches.value_of("profile");
+        let profiles = get_sso_profiles_new(session, &home, filter);
+        run_aws_sso_login(session, verbose);
+        let token = read_sso_cache_token(&profiles[0].sso_start_url, &home, verbose);
+        (profiles, token)
+    } else {
+        let profile = matches.value_of("profile").unwrap().to_owned();
+        let all = matches.is_present("all");
+        let profiles = get_sso_profiles_old(profile, &home, all);
+        let oidc_url = format!("https://oidc.{}.amazonaws.com", profiles[0].sso_region);
+        let register_client_resp = register_client(&oidc_url, verbose);
+        let device_auth_resp = device_auth(&oidc_url, &profiles[0].sso_start_url, &register_client_resp, verbose);
+        let create_token_resp =
+            create_token(&oidc_url, &register_client_resp, &device_auth_resp, verbose);
+        (profiles, create_token_resp.accessToken)
+    };
+
     let sso_url = format!("https://portal.sso.{}.amazonaws.com", sso_profiles[0].sso_region);
-
-    let register_client_resp = register_client(&oidc_url, verbose);
-
-    let device_auth_resp = device_auth(&oidc_url, &sso_profiles[0].sso_start_url, &register_client_resp, verbose);
-
-    let create_token_resp =
-        create_token(&oidc_url, &register_client_resp, &device_auth_resp, verbose);
 
     for sso_profile in sso_profiles {
 
-        let get_role_creds_resp = get_role_credentials(
+        let get_role_creds_resp = match get_role_credentials(
             &sso_url,
             &sso_profile.sso_account_id,
             &sso_profile.sso_role_name,
-            &create_token_resp,
+            &access_token,
             verbose,
-        );
-    
+        ) {
+            Some(r) => r,
+            None => continue,
+        };
+
         save_sso(
             &sso_profile.sso_profile_name,
             &sso_profile.sso_account_id,
@@ -151,46 +161,151 @@ fn main() {
     }
 }
 
-fn get_sso_profiles(profile_name : String, home : &String, all : bool) -> Vec<SsoProfile> {
+fn get_sso_profiles_old(profile_name : String, home : &String, all : bool) -> Vec<SsoProfile> {
 
     let aws_conf = Ini::load_from_file(format!("{}{}", home, "/.aws/config")).unwrap();
 
     let sso_start_url = aws_conf
-        .get_from(Some(format!("{}", profile_name)), "sso_start_url")
-        .unwrap().to_owned();
+        .get_from(Some(profile_name.as_str()), "sso_start_url")
+        .unwrap_or_else(|| panic!("Profile [{}] missing sso_start_url in ~/.aws/config (old format expected; new-format sessions need --sso-session)", profile_name))
+        .to_owned();
     let sso_region = aws_conf
-        .get_from(Some(format!("{}", profile_name)), "sso_region")
+        .get_from(Some(profile_name.as_str()), "sso_region")
         .unwrap().to_owned();
     let sso_account_id = aws_conf
-        .get_from(Some(format!("{}", profile_name)), "sso_account_id")
+        .get_from(Some(profile_name.as_str()), "sso_account_id")
         .unwrap().to_owned();
     let sso_role_name = aws_conf
-        .get_from(Some(format!("{}", profile_name)), "sso_role_name")
+        .get_from(Some(profile_name.as_str()), "sso_role_name")
         .unwrap().to_owned();
 
     if !all {
-        return vec![SsoProfile::new(profile_name, sso_start_url, sso_region, sso_account_id, sso_role_name)]
+        return vec![SsoProfile::new(profile_name, sso_start_url, sso_region, sso_account_id, sso_role_name)];
     }
-    else {
-        let mut profiles = Vec::new();
 
-        for (section, properties) in aws_conf.iter() {
-            if properties.contains_key("sso_start_url") {
-                if properties.get("sso_start_url").unwrap() == sso_start_url {
-                    profiles.push(SsoProfile::new(
-                        section.unwrap().to_owned(),
-                        properties.get("sso_start_url").unwrap().to_owned(),
-                        properties.get("sso_region").unwrap().to_owned(),
-                        properties.get("sso_account_id").unwrap().to_owned(),
-                        properties.get("sso_role_name").unwrap().to_owned(),
-                    ))
-                }
+    let mut profiles = Vec::new();
+    for (section, properties) in aws_conf.iter() {
+        let section_str = match section {
+            Some(s) => s,
+            None => continue,
+        };
+        // Skip new-format sections so a mixed config does not blow up here.
+        if section_str.starts_with("sso-session ") || section_str.starts_with("profile ") {
+            continue;
+        }
+        // Old-format profiles must have all four SSO keys inline.
+        if !properties.contains_key("sso_start_url")
+            || !properties.contains_key("sso_region")
+            || !properties.contains_key("sso_account_id")
+            || !properties.contains_key("sso_role_name")
+        {
+            continue;
+        }
+        if properties.get("sso_start_url").unwrap() != sso_start_url {
+            continue;
+        }
+        profiles.push(SsoProfile::new(
+            section_str.to_owned(),
+            properties.get("sso_start_url").unwrap().to_owned(),
+            properties.get("sso_region").unwrap().to_owned(),
+            properties.get("sso_account_id").unwrap().to_owned(),
+            properties.get("sso_role_name").unwrap().to_owned(),
+        ));
+    }
+    return profiles;
+}
+
+fn get_sso_profiles_new(session: &str, home: &String, filter_profile: Option<&str>) -> Vec<SsoProfile> {
+
+    let aws_conf = Ini::load_from_file(format!("{}{}", home, "/.aws/config")).unwrap();
+
+    let session_section = format!("sso-session {}", session);
+    let sso_start_url = aws_conf
+        .get_from(Some(session_section.as_str()), "sso_start_url")
+        .unwrap_or_else(|| panic!("[sso-session {}] not found or missing sso_start_url in ~/.aws/config", session))
+        .to_owned();
+    let sso_region = aws_conf
+        .get_from(Some(session_section.as_str()), "sso_region")
+        .unwrap().to_owned();
+
+    let mut profiles = Vec::new();
+    for (section, properties) in aws_conf.iter() {
+        let section_str = match section {
+            Some(s) => s,
+            None => continue,
+        };
+        if !section_str.starts_with("profile ") {
+            continue;
+        }
+        if properties.get("sso_session") != Some(session) {
+            continue;
+        }
+        let bare_name = section_str.trim_start_matches("profile ").to_owned();
+        if let Some(f) = filter_profile {
+            if bare_name != f {
+                continue;
             }
         }
-
-        return profiles;
+        profiles.push(SsoProfile::new(
+            bare_name,
+            sso_start_url.clone(),
+            sso_region.clone(),
+            properties.get("sso_account_id").unwrap().to_owned(),
+            properties.get("sso_role_name").unwrap().to_owned(),
+        ));
     }
 
+    if profiles.is_empty() {
+        match filter_profile {
+            Some(f) => panic!("No [profile {}] with sso_session = {} found in ~/.aws/config", f, session),
+            None => panic!("No [profile *] with sso_session = {} found in ~/.aws/config", session),
+        }
+    }
+
+    profiles
+}
+
+fn run_aws_sso_login(session: &str, verbose: bool) {
+    if verbose {
+        println!("Running: aws sso login --sso-session {}", session);
+    }
+    let status = Command::new("aws")
+        .args(&["sso", "login", "--sso-session", session])
+        .status()
+        .unwrap();
+    if !status.success() {
+        panic!("aws sso login --sso-session {} failed (exit {:?})", session, status.code());
+    }
+}
+
+fn read_sso_cache_token(start_url: &str, home: &str, verbose: bool) -> String {
+    let cache_dir = format!("{}/.aws/sso/cache", home);
+    let entries = fs::read_dir(&cache_dir)
+        .unwrap_or_else(|e| panic!("Could not read SSO cache dir {}: {}", cache_dir, e));
+    for entry in entries {
+        let entry = entry.unwrap();
+        let path = entry.path();
+        if path.extension().and_then(|s| s.to_str()) != Some("json") {
+            continue;
+        }
+        let contents = match fs::read_to_string(&path) {
+            Ok(c) => c,
+            Err(_) => continue,
+        };
+        let token: SsoCacheToken = match serde_json::from_str(&contents) {
+            Ok(t) => t,
+            Err(_) => continue,
+        };
+        if token.startUrl.as_deref() == Some(start_url) {
+            if let Some(at) = token.accessToken {
+                if verbose {
+                    println!("Using cached token from {:?} (expires {:?})", path, token.expiresAt);
+                }
+                return at;
+            }
+        }
+    }
+    panic!("No SSO cache token found for startUrl {} in {}", start_url, cache_dir);
 }
 
 fn register_client(oidc_url: &String, verbose: bool) -> RegisterClientResponse {
@@ -302,30 +417,49 @@ fn get_role_credentials(
     sso_url: &String,
     sso_account_id: &String,
     sso_role_name: &String,
-    create_token_resp: &CreateTokenResponse,
+    access_token: &str,
     verbose: bool,
-) -> GetRoleCredsResponse {
-    let get_role_creds = ureq::get(format!("{}{}", sso_url, "/federation/credentials").as_str())
+) -> Option<GetRoleCredsResponse> {
+    let resp = ureq::get(format!("{}{}", sso_url, "/federation/credentials").as_str())
         .query("account_id", sso_account_id)
         .query("role_name", sso_role_name)
         .set(
             "x-amz-sso_bearer_token",
-            format!("{}", create_token_resp.accessToken).as_str(),
+            access_token,
         )
-        .call()
-        .into_json_deserialize::<GetRoleCredsResponse>();
+        .call();
 
-    if verbose {
-        println!("{:#?}", get_role_creds);
+    if !resp.ok() {
+        let status = resp.status();
+        let body = resp.into_string().unwrap_or_else(|_| "<unreadable body>".to_owned());
+        eprintln!(
+            "Skipping {}:{} — SSO portal returned HTTP {}: {}",
+            sso_account_id, sso_role_name, status, body
+        );
+        return None;
     }
 
-    let get_role_creds_un = get_role_creds.unwrap();
+    let parsed = resp.into_json_deserialize::<GetRoleCredsResponse>();
 
     if verbose {
-        println!("{:#?}", get_role_creds_un);
+        println!("{:#?}", parsed);
     }
 
-    get_role_creds_un
+    match parsed {
+        Ok(v) => {
+            if verbose {
+                println!("{:#?}", v);
+            }
+            Some(v)
+        }
+        Err(e) => {
+            eprintln!(
+                "Skipping {}:{} — could not parse credentials response: {}",
+                sso_account_id, sso_role_name, e
+            );
+            None
+        }
+    }
 }
 
 fn save_sso(
