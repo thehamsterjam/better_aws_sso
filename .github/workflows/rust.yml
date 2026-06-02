@@ -1,4 +1,4 @@
-name: Rust
+name: Build ssologin
 
 on:
   push:
@@ -25,12 +25,15 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v4
+    - name: Install musl toolchain
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y musl-tools
+        rustup target add x86_64-unknown-linux-musl
     - name: Build static
-      uses:  stevenleadbeater/rust-musl-builder@master
-      with:
-          args: /bin/bash -c "cargo build --release --target=x86_64-unknown-linux-musl"
-    - uses: actions/upload-artifact@v2
+      run: cargo build --release --target=x86_64-unknown-linux-musl
+    - uses: actions/upload-artifact@v4
       with:
         name: ssologin_ubuntu
         path: target/x86_64-unknown-linux-musl/release/ssologin
@@ -38,10 +41,10 @@ jobs:
   build_win:
     runs-on: windows-latest
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v4
     - name: Build
       run: cargo build --verbose --release
-    - uses: actions/upload-artifact@v2
+    - uses: actions/upload-artifact@v4
       with:
         name: ssologin.exe
         path: target/release/ssologin.exe
@@ -50,10 +53,10 @@ jobs:
   build_mac:
     runs-on: macos-latest
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v4
     - name: Build
       run: cargo build --verbose --release
-    - uses: actions/upload-artifact@v2
+    - uses: actions/upload-artifact@v4
       with:
         name: ssologin_mac
         path: target/release/ssologin
